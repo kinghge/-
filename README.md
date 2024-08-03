@@ -2,6 +2,14 @@
 
 # 温湿度检测
 
+## 项目描述
+利用AHT21传感器检测温度和湿度，，并且使用LCD显示，使用文件系统来存储数据，自动连接wifi，并且使用mqtt上传到阿里云上进行实时监控，还利用LED——Matrix来可视化显示湿度（LED-Matrix根据湿度来控制灯的数量的变化），到达一定湿度时，蜂鸣器报警来提醒我们湿度过高。
+ 
+## 效果图
+![效果图](./figure/12.jpg)
+![效果图](./figure/13.png)
+
+
 ## AHT21检测温湿度
 1. 硬件连接
 在env中打开menuconfig打开板子上的AHT21传感器，并选择对应的i2c总线。
@@ -9,7 +17,7 @@
 
 2.AHT21初始化
 ```c
-aht10_device_t aht20_init(const char *i2c_bus_name)
+aht10_device_t aht21_init(const char *i2c_bus_name)
 {
     aht10_device_t dev ;
 
@@ -28,10 +36,10 @@ aht10_device_t aht20_init(const char *i2c_bus_name)
     return dev;
 }
 ```
-3.AHT20读取数据
+3.AHT21读取数据
 ```c
-        aht20.temperature = aht10_read_temperature(dev);
-        aht20.humidity = aht10_read_humidity(dev);
+        aht21.temperature = aht10_read_temperature(dev);
+        aht21.humidity = aht10_read_humidity(dev);
 ```
 
 
@@ -93,8 +101,8 @@ static int led_matrix(void)
 
     do
     {
-        aht20.temperature = aht10_read_humidity(dev);
-        temp = (int)aht20.temperature;
+        aht21.temperature = aht10_read_humidity(dev);
+        temp = (int)aht21.temperature;
 
         led_matrix_Humidity(temp);
 
@@ -133,7 +141,7 @@ static int led_matrix(void)
 ```c
 void open_file_save(void)
 {
-    rt_sprintf(String, "Temp:%.2f Humi:%.2f,count=%d",aht20.temperature,aht20.humidity,count);
+    rt_sprintf(String, "Temp:%.2f Humi:%.2f,count=%d",aht21.temperature,aht21.humidity,count);
     int fd = open("/fal/Data.txt", O_WRONLY | O_CREAT);
 
             //如果打开成功
@@ -163,8 +171,8 @@ void open_file_save(void)
 ```c
 void lcd_display_aht21(void)
 {
-    rt_sprintf(string1, "temperature:%.2f",aht20.temperature);
-    rt_sprintf(string2, "humidity:%.2f",aht20.humidity);
+    rt_sprintf(string1, "temperature:%.2f",aht21.temperature);
+    rt_sprintf(string2, "humidity:%.2f",aht21.humidity);
     rt_sprintf(string3, "count:%d",count);
 
     lcd_show_string(10,69+16+24,32,string1);
@@ -186,7 +194,7 @@ static int example_publish_temperature(void *handle)
 {
 
     char payload[50];
-    rt_sprintf(payload,"{\"params\":{\"temperature\":%.1f}}",aht20.temperature);
+    rt_sprintf(payload,"{\"params\":{\"temperature\":%.1f}}",aht21.temperature);
 
 
 
@@ -288,8 +296,8 @@ static int work_main(void)
         return -1;
     }
     while (1) {
-        aht20.temperature = aht10_read_temperature(dev);
-        aht20.humidity = aht10_read_humidity(dev);
+        aht21.temperature = aht10_read_temperature(dev);
+        aht21.humidity = aht10_read_humidity(dev);
 
 
         if (0 == loop_cnt % 20) {
