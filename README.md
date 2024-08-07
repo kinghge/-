@@ -3,12 +3,36 @@
 # 温湿度检测
 
 ## 项目描述
-利用AHT21传感器检测温度和湿度，，并且使用LCD显示，使用文件系统来存储数据，自动连接wifi，并且使用mqtt上传到阿里云上进行实时监控，还利用LED——Matrix来可视化显示湿度（LED-Matrix根据湿度来控制灯的数量的变化），到达一定湿度时，蜂鸣器报警来提醒我们湿度过高。
+利用AHT21传感器检测温度和湿度，使用消息队列进行信息传输，并且使用LCD显示，使用文件系统来存储数据，自动连接wifi，并且使用mqtt上传到阿里云上进行实时监控，还利用LED——Matrix来可视化显示湿度（LED-Matrix根据湿度来控制灯的数量的变化），到达一定湿度时，蜂鸣器报警来提醒我们湿度过高。
  
 ## 效果图
 ![效果图](./figure/12.jpg)
 ![效果图](./figure/13.png)
 
+## 消息队列信息传输
+### 初始化消息队列
+```c
+    result = rt_mq_init(&mq,
+                        "mqt",
+                        &msg_pool[0],             /* 内存池指向 msg_pool */
+                        sizeof(int),                          /* 每个消息的大小是 1 字节 */
+                        sizeof(msg_pool),        /* 内存池的大小是 msg_pool 的大小 */
+                        RT_IPC_FLAG_PRIO);
+```
+### 消息队列发送消息
+```c
+        int result;
+        int humi = (int)humidity;
+        result = rt_mq_send(&mq, &humi, sizeof(humi));
+```
+### 消息队列接收消息
+```C
+        result = rt_mq_recv(&mq, &Humidty, sizeof(Humidty), RT_WAITING_FOREVER) ;
+        if (result != 4)
+        {
+            rt_kprintf("rt_mq_recv ERR\n");
+        }
+```
 
 ## AHT21检测温湿度
 1. 硬件连接

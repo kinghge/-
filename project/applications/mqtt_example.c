@@ -20,16 +20,15 @@ char DEMO_DEVICE_SECRET[IOTX_DEVICE_SECRET_LEN + 1] = {0};
 
 #define PIN_BEEP        16 
 
-int count =1;
 char String[100];
 char string1[25];
 char string2[25];
 char string3[10];
 
 aht10_device_t dev ;
-// static struct rt_messagequeue mq;
-// /* 消息队列中用到的放置消息的内存池 */
-// static rt_uint8_t msg_pool[2048];
+static struct rt_messagequeue mq;
+/* 消息队列中用到的放置消息的内存池 */
+static rt_uint8_t msg_pool[2048];
 
 ALIGN(RT_ALIGN_SIZE)
 static char thread1_stack[4096];
@@ -56,18 +55,10 @@ int HAL_Snprintf(char *str, const int len, const char *fmt, ...);
     } while(0)
 
 
-struct AHT20
-{
-    float humidity;
-    float temperature;
-}aht20;
 
 aht10_device_t aht20_init(const char *i2c_bus_name)
 {
     aht10_device_t dev ;
-
-
-    int count=0;
 
     rt_thread_mdelay(1000);
 
@@ -125,11 +116,11 @@ static int example_subscribe(void *handle)
     return 0;
 }
 
-static int example_publish_temperature(void *handle)
+static int example_publish_temperature(void *handle,float temperature)
 {
 
     char payload[50];
-    rt_sprintf(payload,"{\"params\":{\"temperature\":%.1f}}",aht20.temperature);
+    rt_sprintf(payload,"{\"params\":{\"temperature\":%.1f}}",temperature);
 
 
 
@@ -163,12 +154,12 @@ static void example_event_handle(void *pcontext, void *pclient, iotx_mqtt_event_
 {
     EXAMPLE_TRACE("msg->event_type : %d", msg->event_type);
 }
-static int example_publish_Humidity(void *handle)
+static int example_publish_Humidity(void *handle,float humidity)
 {
 
 
     char payload[50];
-    rt_sprintf(payload,"{\"params\":{\"Humidity\":%.1f}}",aht20.humidity);
+    rt_sprintf(payload,"{\"params\":{\"Humidity\":%.1f}}",humidity);
 
 
 
@@ -200,17 +191,17 @@ static int example_publish_Humidity(void *handle)
 
 void wifi_link_nok  (void)
 {
-    const char *ssid = "--------t";
-    const char *key = "-----------";
+    const char *ssid = "---------";
+    const char *key = "--------------";
     rt_thread_mdelay(1000);
     rt_wlan_scan();
     rt_wlan_connect(ssid,key);
     rt_thread_mdelay(1000);
 }
 
-void open_file_save(void)
+void open_file_save(float temperature,float humidity,int count)
 {
-    rt_sprintf(String, "Temp:%.2f Humi:%.2f,count=%d",aht20.temperature,aht20.humidity,count);
+    rt_sprintf(String, "Temp:%.2f Humi:%.2f,count=%d",temperature,humidity,count);
     int fd = open("/fal/Data.txt", O_WRONLY | O_CREAT);
 
             //如果打开成功
@@ -230,10 +221,10 @@ void open_file_save(void)
     }
 }
 
-void lcd_display_aht21(void)
+void lcd_display_aht21(float temperature,float humidity,int count)
 {
-    rt_sprintf(string1, "temperature:%.2f",aht20.temperature);
-    rt_sprintf(string2, "humidity:%.2f",aht20.humidity);
+    rt_sprintf(string1, "temperature:%.2f",temperature);
+    rt_sprintf(string2, "humidity:%.2f",humidity);
     rt_sprintf(string3, "count:%d",count);
 
     lcd_show_string(10,69+16+24,32,string1);
@@ -243,8 +234,7 @@ void lcd_display_aht21(void)
 
 static int work_main(void)
 {
-    wifi_link_nok();
-
+    int count =0;
     void                   *pclient = NULL;
     int                     res = 0;
     int                     loop_cnt = 0;
@@ -276,21 +266,32 @@ static int work_main(void)
         return -1;
     }
     while (1) {
-        aht20.temperature = aht10_read_temperature(dev);
-        aht20.humidity = aht10_read_humidity(dev);
 
+        float temperature;
+        float humidity;
+        
+        temperature = aht10_read_temperature(dev);
+        humidity = aht10_read_humidity(dev);
+
+        int result;
+        int humi = (int)humidity;
+        result = rt_mq_send(&mq, &humi, sizeof(humi));
+            if (result != RT_EOK)
+            {
+                rt_kprintf("rt_mq_send ERR\n");
+            }
 
         if (0 == loop_cnt % 20) {
-            example_publish_temperature(pclient);
-            example_publish_Humidity(pclient);
+            example_publish_temperature(pclient,temperature);
+            example_publish_Humidity(pclient,humidity);
         }
         IOT_MQTT_Yield(pclient, 200);
 
         // 显示数据
-        lcd_display_aht21();
+        lcd_display_aht21(temperature,humidity,count);
         
         // 存取数据
-        open_file_save();
+        open_file_save(temperature,humidity,count);
 
         loop_cnt += 1;
         count++;
@@ -303,18 +304,29 @@ static int work_main(void)
 
 static int led_matrix(void)
 {
-    int temp =0 ;
+    int Humidity =0 ;
 
     do
     {
-        aht20.temperature = aht10_read_humidity(dev);
-        temp = (int)aht20.temperature;
+        // aht20.humidity = aht10_read_humidity(dev);
+        // Humidity = (int)aht20.humidity;
+        int Humidty;
+        int result;
+        result = rt_mq_recv(&mq, &Humidty, sizeof(Humidty), RT_WAITING_FOREVER) ;
+        if (result != 4)
+        {
+            rt_kprintf("rt_mq_recv ERR\n");
+        }
 
-        led_matrix_Humidity(temp);
+
+        led_matrix_Humidity(Humidty);
 
         RGB_Reflash();
 
-        if(temp > 35)
+
+        rt_kprintf("Humidity:%d\n", Humidty);
+
+        if(Humidty > 80)
         {
             rt_pin_write(PIN_BEEP,PIN_HIGH);
         }
@@ -330,11 +342,20 @@ static int led_matrix(void)
 
 
 
-
 int Smart_Agriculture(void)
 {
     dev = aht20_init("i2c3");
     rt_pin_mode(PIN_BEEP, PIN_MODE_OUTPUT);
+    wifi_link_nok();
+
+    rt_err_t result;
+
+    result = rt_mq_init(&mq,
+                        "mqt",
+                        &msg_pool[0],             /* 内存池指向 msg_pool */
+                        sizeof(int),                          /* 每个消息的大小是 1 字节 */
+                        sizeof(msg_pool),        /* 内存池的大小是 msg_pool 的大小 */
+                        RT_IPC_FLAG_PRIO);
 
 
     rt_thread_init(&thread1,
@@ -352,7 +373,7 @@ int Smart_Agriculture(void)
                    &thread2_stack[0],
                    sizeof(thread2_stack), 11, 5);
     rt_thread_startup(&thread2);
-
-    return 0;
 }
+
 MSH_CMD_EXPORT(Smart_Agriculture,SmartA griculture);
+
